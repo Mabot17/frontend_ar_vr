@@ -1,32 +1,63 @@
 // src/components/ARScene.jsx
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store/store';
 
 const ARScene = ({ onCardDetected }) => {
   const { scannedCard } = useStore();
+  const sceneRef = useRef(null);
+  const [scriptsLoaded, setScriptsLoaded] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Load A-Frame dan AR.js via CDN
-    if (!document.querySelector('script[src*="aframe"]')) {
-      const aframeScript = document.createElement('script');
-      aframeScript.src = 'https://aframe.io/releases/1.4.0/aframe.min.js';
-      document.head.appendChild(aframeScript);
+    let aframeScript, arScript;
 
-      aframeScript.onload = () => {
-        const arScript = document.createElement('script');
-        arScript.src = 'https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js';
-        document.head.appendChild(arScript);
-      };
-    }
+    const loadScripts = async () => {
+      try {
+        // Load A-Frame first
+        if (!document.querySelector('script[src*="aframe"]')) {
+          aframeScript = document.createElement('script');
+          aframeScript.src = 'https://aframe.io/releases/1.4.0/aframe.min.js';
+          document.head.appendChild(aframeScript);
 
-    // Register marker detection event
+          await new Promise((resolve, reject) => {
+            aframeScript.onload = resolve;
+            aframeScript.onerror = () => reject(new Error('Failed to load A-Frame'));
+            setTimeout(() => reject(new Error('A-Frame load timeout')), 10000);
+          });
+        }
+
+        // Then load AR.js
+        if (!document.querySelector('script[src*="aframe-ar"]')) {
+          arScript = document.createElement('script');
+          arScript.src = 'https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js';
+          document.head.appendChild(arScript);
+
+          await new Promise((resolve, reject) => {
+            arScript.onload = resolve;
+            arScript.onerror = () => reject(new Error('Failed to load AR.js'));
+            setTimeout(() => reject(new Error('AR.js load timeout')), 10000);
+          });
+        }
+
+        console.log('✅ Scripts loaded successfully');
+        setScriptsLoaded(true);
+      } catch (err) {
+        console.error('❌ Script loading error:', err);
+        setError(err.message);
+      }
+    };
+
+    loadScripts();
+  }, []);
+
+  useEffect(() => {
+    if (!scriptsLoaded) return;
+
     const handleMarkerFound = (evt) => {
-      const markerId = evt.target.getAttribute('value');
-      console.log('Marker detected:', markerId);
+      console.log('🎯 Marker detected!');
       
-      // Simulate fetch card data (ganti dengan API call sebenarnya)
       const mockCard = {
-        card_id: markerId || 'weapon_001',
+        card_id: 'weapon_001',
         name: 'Excalibur Sword',
         type_card: 'weapon',
         rarity: 'legendary',
@@ -40,23 +71,90 @@ const ARScene = ({ onCardDetected }) => {
       }
     };
 
-    // Setup event listener
-    window.addEventListener('markerFound', handleMarkerFound);
+    const marker = document.querySelector('a-marker');
+    if (marker) {
+      marker.addEventListener('markerFound', handleMarkerFound);
+      
+      return () => {
+        marker.removeEventListener('markerFound', handleMarkerFound);
+      };
+    }
+  }, [scriptsLoaded, onCardDetected]);
 
-    return () => {
-      window.removeEventListener('markerFound', handleMarkerFound);
-    };
-  }, [onCardDetected]);
+  if (error) {
+    return (
+      <div style={{
+        width: '100%',
+        height: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        background: '#1f2937',
+        color: 'white'
+      }}>
+        <h2 style={{ color: '#ef4444' }}>❌ Error Loading AR</h2>
+        <p>{error}</p>
+        <button
+          onClick={() => window.location.reload()}
+          style={{
+            marginTop: '20px',
+            padding: '10px 20px',
+            background: '#3b82f6',
+            color: 'white',
+            border: 'none',
+            borderRadius: '8px',
+            cursor: 'pointer'
+          }}
+        >
+          Reload Page
+        </button>
+      </div>
+    );
+  }
+
+  if (!scriptsLoaded) {
+    return (
+      <div style={{
+        width: '100%',
+        height: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        background: '#1f2937',
+        color: 'white'
+      }}>
+        <div style={{
+          width: '50px',
+          height: '50px',
+          border: '5px solid #374151',
+          borderTop: '5px solid #10b981',
+          borderRadius: '50%',
+          animation: 'spin 1s linear infinite'
+        }}></div>
+        <p style={{ marginTop: '20px' }}>Loading AR libraries...</p>
+        <style>{`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}</style>
+      </div>
+    );
+  }
 
   return (
     <div style={{ width: '100%', height: '100vh', position: 'relative' }}>
       <a-scene
+        ref={sceneRef}
         embedded
         arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;"
+        vr-mode-ui="enabled: false"
       >
-        <a-marker preset="hiro" emitevents="true">
+        <a-marker preset="hiro" emitevents="true" id="main-marker">
           {scannedCard && scannedCard.trigger_type === '3d_model' && (
-            <a-box position="0 0.5 0" material="color: red;"></a-box>
+            <a-box position="0 0.5 0" material="color: red;" animation="property: rotation; to: 0 360 0; loop: true; dur: 10000"></a-box>
           )}
           {scannedCard && scannedCard.trigger_type === 'image' && (
             <a-plane 
@@ -91,9 +189,9 @@ const ARScene = ({ onCardDetected }) => {
         borderRadius: '8px',
         zIndex: 999
       }}>
-        <p>Arahkan kamera ke marker HIRO</p>
+        <p style={{ margin: 0 }}>📷 Arahkan kamera ke marker HIRO</p>
         {scannedCard && (
-          <p style={{ color: '#4ade80', fontWeight: 'bold' }}>
+          <p style={{ color: '#4ade80', fontWeight: 'bold', margin: '5px 0 0 0' }}>
             ✓ Kartu terdeteksi: {scannedCard.name}
           </p>
         )}

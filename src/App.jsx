@@ -1,7 +1,15 @@
 // App.jsx
 import React, { useState, useEffect } from 'react';
 import { Camera, Package, Sparkles, Shield, Sword, User } from 'lucide-react';
+import { Html5QrcodeScanner } from "html5-qrcode";
 import './App.css';
+
+const BARCODE_MAP = {
+  '8991002101234': 'weapon_001',
+  '8991002105678': 'armor_001',
+  '8999999999999': 'char_001'
+};
+
 
 // Card Database
 const CARD_DATABASE = {
@@ -129,24 +137,45 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (arEnabled) {
+    if (arEnabled && scannedCard) {
       loadARScripts();
     }
-  }, [arEnabled]);
+  }, [scannedCard]);
 
   const loadARScripts = () => {
-    // Load A-Frame
-    if (!document.querySelector('script[src*="aframe"]')) {
+    const injectScene = () => {
+      const container = document.getElementById('ar-scene-container');
+      if (!container) return;
+
+      container.innerHTML = `
+        <a-scene
+          embedded
+          arjs="sourceType: webcam; debugUIEnabled: false;"
+          vr-mode-ui="enabled: false"
+        >
+          <a-marker preset="hiro">
+            ${buildAREntity(scannedCard)}
+          </a-marker>
+
+          <a-entity camera></a-entity>
+        </a-scene>
+      `;
+    };
+
+    if (!window.AFRAME) {
       const aframeScript = document.createElement('script');
-      aframeScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/aframe/1.4.2/aframe.min.js';
-      document.head.appendChild(aframeScript);
-      
-      // Load AR.js after A-Frame
+      aframeScript.src =
+        'https://cdnjs.cloudflare.com/ajax/libs/aframe/1.4.2/aframe.min.js';
       aframeScript.onload = () => {
         const arScript = document.createElement('script');
-        arScript.src = 'https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js';
+        arScript.src =
+          'https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js';
+        arScript.onload = injectScene;
         document.head.appendChild(arScript);
       };
+      document.head.appendChild(aframeScript);
+    } else {
+      injectScene();
     }
   };
 
@@ -181,6 +210,35 @@ function App() {
     }, 4000);
   };
 
+  const handleBarcodeScan = (barcode) => {
+    const cardId = BARCODE_MAP[barcode];
+
+    if (!cardId) {
+      alert('Barcode tidak terdaftar');
+      return;
+    }
+
+    const card = CARD_DATABASE[cardId];
+
+    const newItem = {
+      ...card,
+      id: Date.now(),
+      obtained_at: new Date().toISOString(),
+      barcode
+    };
+
+    setScannedCard(newItem);
+    setShowReward(true);
+
+    const newInventory = [...inventory, newItem];
+    saveInventory(newInventory);
+
+    setTimeout(() => {
+      setShowReward(false);
+    }, 4000);
+  };
+
+
   const startAR = () => {
     setArEnabled(true);
   };
@@ -188,6 +246,60 @@ function App() {
   const stopAR = () => {
     setArEnabled(false);
   };
+
+  const BarcodeScanner = ({ onScan }) => {
+    useEffect(() => {
+      const scanner = new Html5QrcodeScanner(
+        "barcode-reader",
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 150 }
+        },
+        false
+      );
+
+      scanner.render(
+        (decodedText) => {
+          onScan(decodedText);
+          scanner.clear();
+        },
+        () => {}
+      );
+
+      return () => {
+        scanner.clear().catch(() => {});
+      };
+    }, []);
+
+    return <div id="barcode-reader" />;
+  };
+
+  const buildAREntity = (card) => {
+    if (!card) return '';
+
+    const color =
+      card.rarity === 'legendary' ? 'gold' :
+      card.rarity === 'epic' ? 'purple' :
+      'blue';
+
+    return `
+      <a-box
+        position="0 0.5 0"
+        rotation="0 45 0"
+        animation="property: rotation; to: 0 405 0; loop: true; dur: 6000"
+        material="color: ${color}; opacity: 0.85"
+      ></a-box>
+
+      <a-text
+        value="${card.name}"
+        position="0 1.2 0"
+        align="center"
+        width="3"
+        color="white"
+      ></a-text>
+    `;
+  };
+
 
   const renderScanner = () => {
     if (!arEnabled) {
@@ -204,7 +316,7 @@ function App() {
           
           <div className="simulate-section">
             <p>Atau simulasi scan:</p>
-            <button onClick={handleScan} className="btn-secondary">
+            <button onClick={handleBarcodeScan} className="btn-secondary">
               🎲 Simulate Scan
             </button>
           </div>
@@ -235,9 +347,12 @@ function App() {
         />
         
         <div className="ar-controls">
-          <button onClick={handleScan} className="btn-scan">
-            Scan & Get Item
+          <BarcodeScanner onScan={handleBarcodeScan} />
+
+          <button onClick={handleScan} className="btn-secondary">
+            🎲 Simulate Scan
           </button>
+
           <button onClick={stopAR} className="btn-stop">
             Stop AR
           </button>

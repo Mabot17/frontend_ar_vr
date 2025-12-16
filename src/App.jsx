@@ -5,9 +5,10 @@ import { Html5QrcodeScanner } from "html5-qrcode";
 import './App.css';
 
 const BARCODE_MAP = {
-  '8991002101234': 'weapon_001',
-  '8991002105678': 'armor_001',
-  '8999999999999': 'char_001'
+  '8994214995868': 'weapon_001',
+  '8999909000544': 'armor_001',
+  '8997217370373': 'char_001',
+  '8999909013278': 'armor_002',
 };
 
 
